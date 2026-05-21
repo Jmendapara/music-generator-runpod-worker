@@ -1,0 +1,17 @@
+services:
+  music-generator-worker:
+    image: music-generator-runpod-worker:dev
+    pull_policy: never
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: all
+              capabilities: [gpu]
+    ports:
+      - "8000:8000"
+      - "8188:8188"
+    volumes:
+      - ./data/comfyui/output:/comfyui/output
+      - ./data/runpod-volume:/runpod-volume
