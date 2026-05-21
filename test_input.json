@@ -4,7 +4,7 @@
     "workflow": {
       "1": {
         "inputs": {
-          "unet_name": "acestep_v1.5_xl_base_bf16.safetensors",
+          "unet_name": "acestep_v1.5_xl_turbo_bf16.safetensors",
           "weight_dtype": "default"
         },
         "class_type": "UNETLoader",
@@ -97,8 +97,8 @@
       "8": {
         "inputs": {
           "seed": 0,
-          "steps": 50,
-          "cfg": 6,
+          "steps": 8,
+          "cfg": 1,
           "sampler_name": "euler",
           "scheduler": "simple",
           "denoise": 1,

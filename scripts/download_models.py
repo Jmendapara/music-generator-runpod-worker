@@ -82,6 +82,28 @@ MODEL_SETS = {
             "/comfyui/models/vae/ace_1.5_vae.safetensors",
         ),
     ],
+    "ace-step-1.5-xl-turbo": [
+        (
+            "Comfy-Org/ace_step_1.5_ComfyUI_files",
+            "split_files/diffusion_models/acestep_v1.5_xl_turbo_bf16.safetensors",
+            "/comfyui/models/diffusion_models/acestep_v1.5_xl_turbo_bf16.safetensors",
+        ),
+        (
+            "Comfy-Org/ace_step_1.5_ComfyUI_files",
+            "split_files/text_encoders/qwen_0.6b_ace15.safetensors",
+            "/comfyui/models/text_encoders/qwen_0.6b_ace15.safetensors",
+        ),
+        (
+            "Comfy-Org/ace_step_1.5_ComfyUI_files",
+            "split_files/text_encoders/qwen_4b_ace15.safetensors",
+            "/comfyui/models/text_encoders/qwen_4b_ace15.safetensors",
+        ),
+        (
+            "Comfy-Org/ace_step_1.5_ComfyUI_files",
+            "split_files/vae/ace_1.5_vae.safetensors",
+            "/comfyui/models/vae/ace_1.5_vae.safetensors",
+        ),
+    ],
 }
 
 
