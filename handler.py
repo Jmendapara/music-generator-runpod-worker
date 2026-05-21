@@ -37,8 +37,14 @@ COMFY_HOST = "127.0.0.1:8188"
 
 
 def _make_s3_client():
-    """Create a boto3 S3 client pointing at the configured R2 endpoint."""
+    """Create a boto3 S3 client pointing at the configured R2 endpoint.
+
+    Cloudflare R2 only accepts SigV4-signed requests, so we pin signature_version
+    here. region_name='auto' is the R2-recommended placeholder (R2 is region-less
+    but boto3 requires the field to be set).
+    """
     import boto3
+    from botocore.config import Config
 
     endpoint = os.environ.get("BUCKET_ENDPOINT_URL")
     access_key = os.environ.get("BUCKET_ACCESS_KEY_ID")
@@ -53,6 +59,8 @@ def _make_s3_client():
         endpoint_url=endpoint,
         aws_access_key_id=access_key,
         aws_secret_access_key=secret_key,
+        region_name="auto",
+        config=Config(signature_version="s3v4"),
     )
 
 
