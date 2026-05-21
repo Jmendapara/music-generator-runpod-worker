@@ -10,9 +10,9 @@ Generate full-band music — instrumentals or vocals with lyrics — from a text
 
 - [Features](#features)
 - [Quickstart](#quickstart)
+- [Test Your Endpoint](#test-your-endpoint)
 - [Building the Docker Image](#building-the-docker-image)
 - [API Specification](#api-specification)
-- [Usage](#usage)
 - [Workflow ↔ MODEL_TYPE Compatibility](#workflow--model_type-compatibility)
 - [Configuration](#configuration)
 - [Local Development](#local-development)
@@ -34,7 +34,57 @@ Generate full-band music — instrumentals or vocals with lyrics — from a text
 2. The build script pushes the image to Docker Hub
 3. Create a RunPod serverless template pointing at the pushed image
 4. Create a RunPod endpoint from the template (recommended: GPU with 16+ GB VRAM, e.g. A100 / H100 / RTX 4090)
-5. POST `test_input.json` to your endpoint
+5. POST `test_input.json` to your endpoint (see [Test Your Endpoint](#test-your-endpoint))
+
+## Test Your Endpoint
+
+The repo ships **one** copy-pasteable test payload: [`test_input.json`](./test_input.json) at the repo root. The full request body shape is `{"input": {"workflow": {...}}}` — do not strip the outer `{"input": ...}` wrapper or paste only the inner workflow nodes, or the worker will respond with `"Missing 'workflow' parameter"`.
+
+### Curl
+
+```bash
+curl -X POST \
+  -H "Authorization: Bearer <YOUR_RUNPOD_API_KEY>" \
+  -H "Content-Type: application/json" \
+  -d @test_input.json \
+  https://api.runpod.ai/v2/<YOUR_ENDPOINT_ID>/runsync
+```
+
+### RunPod Dashboard
+
+Open your endpoint → **Requests** tab → paste the entire contents of `test_input.json` into the Request JSON editor → Send. The dashboard expects the full `{"input": {...}}` envelope verbatim.
+
+### Customizing the request
+
+Edit `test_input.json` directly. The fields you typically want to tweak live inside `input.workflow`:
+
+- Node `"5"`.`inputs.seconds` — duration in seconds (5–600)
+- Node `"6"`.`inputs.tags` — genre/style prompt (e.g. `"lo-fi, jazz, mellow piano"`)
+- Node `"6"`.`inputs.lyrics` — set to `""` for instrumental, or paste lyrics with `[Verse]` / `[Chorus]` markers
+- Node `"6"`.`inputs.bpm` — beats per minute (10–300)
+- Node `"6"`.`inputs.keyscale` — e.g. `"C major"`, `"A minor"`
+- Node `"6"`.`inputs.duration` — keep equal to node 5's `seconds`
+- Node `"6"`.`inputs.seed` and node `"8"`.`inputs.seed` — set to the same non-zero value for reproducible output
+
+Expected response:
+
+```json
+{
+  "id": "sync-<uuid>",
+  "status": "COMPLETED",
+  "output": {
+    "audio": [
+      {
+        "filename": "ACEStep_00001_.wav",
+        "type": "base64",
+        "data": "UklGRiQAAABXQVZF..."
+      }
+    ]
+  }
+}
+```
+
+(Or `"type": "s3_url"` with a presigned R2 URL when the `BUCKET_*` env vars are set.)
 
 ## Building the Docker Image
 
@@ -126,29 +176,6 @@ Each item in `output.audio` or `output.images`:
 | `filename` | String | Final filename (FLAC outputs are renamed to `.wav` after conversion) |
 | `type` | String | `"base64"` or `"s3_url"` |
 | `data` | String | Base64-encoded WAV bytes, or a presigned R2 URL |
-
-## Usage
-
-### Generate Music (Sync)
-
-```bash
-curl -X POST \
-  -H "Authorization: Bearer <api_key>" \
-  -H "Content-Type: application/json" \
-  -d @test_input.json \
-  https://api.runpod.ai/v2/<endpoint_id>/runsync
-```
-
-### Example Workflow
-
-The bundled workflow lives at [`test_resources/workflows/ace_step_xl_sft.json`](./test_resources/workflows/ace_step_xl_sft.json). It produces a ~30 s neo-soul instrumental in C major. Edit the `tags`, `lyrics`, `bpm`, `keyscale`, and `duration` fields in node `6` to taste, and the `seconds` field in node `5` to match the duration.
-
-To author a new workflow:
-
-1. Open ComfyUI locally with the same model variant installed
-2. Build your workflow visually
-3. Select **Workflow → Export (API)** to save it in API format
-4. Use the exported JSON as `input.workflow`
 
 ## Workflow ↔ MODEL_TYPE Compatibility
 
