@@ -132,6 +132,7 @@ The worker exposes standard RunPod serverless endpoints (`/run`, `/runsync`, `/h
 ```json
 {
   "input": {
+    "uid": "<firebase-user-id>",
     "workflow": { /* ComfyUI workflow JSON in API format */ },
     "images": [
       { "name": "reference.wav", "image": "data:audio/wav;base64,..." }
@@ -143,6 +144,7 @@ The worker exposes standard RunPod serverless endpoints (`/run`, `/runsync`, `/h
 | Field | Type | Required | Description |
 |---|---|---|---|
 | `input.workflow` | Object | Yes | ComfyUI workflow in API format. See [Workflow ↔ MODEL_TYPE Compatibility](#workflow--model_type-compatibility) for what the baked-in variant accepts. |
+| `input.uid` | String | No | Authenticated user id. When present, outputs land in R2 under `users/<uid>/generations/`. Must be a non-empty string and contain no `/`. |
 | `input.images` | Array | No | Optional input files (uploaded via ComfyUI's `/upload/image`). Each object has `name` and `image` (base64 or data URI) keys. |
 
 ### Output
@@ -202,7 +204,16 @@ The worker exposes only four runtime environment variables — all related to Cl
 | `BUCKET_ENDPOINT_URL` | No | Cloudflare R2 endpoint (e.g. `https://<account>.r2.cloudflarestorage.com`). When set, outputs are uploaded to R2 and returned as `type: "s3_url"`. When unset, outputs are returned as `type: "base64"`. |
 | `BUCKET_ACCESS_KEY_ID` | No | R2 access key |
 | `BUCKET_SECRET_ACCESS_KEY` | No | R2 secret |
-| `BUCKET_NAME` | No | R2 bucket name. Defaults to `month-year`. |
+| `R2_BUCKET_NAME` | No | R2 bucket name. **Required when R2 upload is enabled.** |
+
+### Output object key
+
+When R2 upload is enabled, the worker writes outputs as `<prefix>/<8-char-uuid>.<ext>`, where prefix is:
+
+- `users/<uid>/generations/` — when the request includes a `"uid"` field (recommended for authenticated user generations; makes per-user lifecycle policies trivial)
+- `<job_id>/` — fallback when no `uid` is provided
+
+The returned `data` field is a 7-day presigned GET URL.
 
 ## Local Development
 

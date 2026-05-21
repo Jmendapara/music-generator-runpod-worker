@@ -10,7 +10,6 @@ are configured.
 """
 
 import runpod
-from runpod.serverless.utils import rp_upload
 import json
 import urllib.request
 import urllib.parse
@@ -35,6 +34,76 @@ WEBSOCKET_RECONNECT_ATTEMPTS = 5
 WEBSOCKET_RECONNECT_DELAY_S = 3
 
 COMFY_HOST = "127.0.0.1:8188"
+
+
+def _make_s3_client():
+    """Create a boto3 S3 client pointing at the configured R2 endpoint."""
+    import boto3
+
+    endpoint = os.environ.get("BUCKET_ENDPOINT_URL")
+    access_key = os.environ.get("BUCKET_ACCESS_KEY_ID")
+    secret_key = os.environ.get("BUCKET_SECRET_ACCESS_KEY")
+    if not endpoint or not access_key or not secret_key:
+        raise ValueError(
+            "R2 credentials not configured. BUCKET_ENDPOINT_URL, BUCKET_ACCESS_KEY_ID, "
+            "and BUCKET_SECRET_ACCESS_KEY must all be set to upload outputs to R2."
+        )
+    return boto3.client(
+        "s3",
+        endpoint_url=endpoint,
+        aws_access_key_id=access_key,
+        aws_secret_access_key=secret_key,
+    )
+
+
+def _guess_content_type(ext):
+    ext = ext.lower()
+    return {
+        ".wav": "audio/wav",
+        ".flac": "audio/flac",
+        ".mp3": "audio/mpeg",
+        ".ogg": "audio/ogg",
+        ".png": "image/png",
+        ".jpg": "image/jpeg",
+        ".jpeg": "image/jpeg",
+        ".webp": "image/webp",
+        ".mp4": "video/mp4",
+    }.get(ext, "application/octet-stream")
+
+
+def upload_output_to_r2(file_bytes, filename, job_id, uid=None):
+    """
+    Upload output bytes to R2 and return a 7-day presigned URL.
+
+    Leaf: <8-char-uuid>.<ext> — collision-free.
+
+    Prefix:
+      - if uid is provided: users/<uid>/generations/
+      - otherwise:          <job_id>/
+    """
+    bucket = os.environ.get("R2_BUCKET_NAME")
+    if not bucket:
+        raise ValueError("R2_BUCKET_NAME must be set to upload outputs to R2.")
+
+    ext = os.path.splitext(filename)[1] or ".wav"
+    leaf = f"{str(uuid.uuid4())[:8]}{ext}"
+    if uid:
+        key = f"users/{uid}/generations/{leaf}"
+    else:
+        key = f"{job_id}/{leaf}"
+
+    s3 = _make_s3_client()
+    s3.put_object(
+        Bucket=bucket,
+        Key=key,
+        Body=file_bytes,
+        ContentType=_guess_content_type(ext),
+    )
+    return s3.generate_presigned_url(
+        "get_object",
+        Params={"Bucket": bucket, "Key": key},
+        ExpiresIn=604800,  # 7 days
+    )
 
 
 def _comfy_server_status():
@@ -131,9 +200,17 @@ def validate_input(job_input):
                 "'images' must be a list of objects with 'name' and 'image' keys",
             )
 
+    uid = job_input.get("uid")
+    if uid is not None:
+        if not isinstance(uid, str) or not uid.strip():
+            return None, "'uid' must be a non-empty string"
+        if "/" in uid:
+            return None, "'uid' must not contain '/'"
+
     return {
         "workflow": workflow,
         "images": images,
+        "uid": uid,
     }, None
 
 
@@ -442,10 +519,14 @@ def _convert_flac_to_wav(file_bytes, filename):
         return file_bytes, filename
 
 
-def _process_output_file(filename, subfolder, file_type, job_id, output_list, errors):
+def _process_output_file(filename, subfolder, file_type, job_id, output_list, errors, uid=None):
     """
     Fetch a single output file from ComfyUI and append it to output_list
     as either base64 data or an S3 URL. FLAC audio is converted to WAV first.
+
+    When uid is provided and R2 env vars are set, the object is keyed at
+    users/<uid>/generations/<uuid8>.<ext>; otherwise it falls back to
+    <job_id>/<uuid8>.<ext>.
     """
     if file_type == "temp":
         print(f"worker-comfyui - Skipping {filename} because type is 'temp'")
@@ -464,24 +545,12 @@ def _process_output_file(filename, subfolder, file_type, job_id, output_list, er
 
         if file_extension.lower() == ".flac":
             file_bytes, filename = _convert_flac_to_wav(file_bytes, filename)
-            file_extension = os.path.splitext(filename)[1] or ".wav"
 
         if os.environ.get("BUCKET_ENDPOINT_URL"):
             try:
-                with tempfile.NamedTemporaryFile(
-                    suffix=file_extension, delete=False
-                ) as temp_file:
-                    temp_file.write(file_bytes)
-                    temp_file_path = temp_file.name
-                print(
-                    f"worker-comfyui - Wrote file bytes to temporary file: {temp_file_path}"
-                )
-
-                bucket_name = os.environ.get("BUCKET_NAME")
-                print(f"worker-comfyui - Uploading {filename} to S3 (bucket={bucket_name or 'default'})...")
-                s3_url = rp_upload.upload_image(job_id, temp_file_path, bucket_name=bucket_name)
-                os.remove(temp_file_path)
-                print(f"worker-comfyui - Uploaded {filename} to S3: {s3_url}")
+                print(f"worker-comfyui - Uploading {filename} to R2 (uid={uid or 'none'})...")
+                s3_url = upload_output_to_r2(file_bytes, filename, job_id, uid=uid)
+                print(f"worker-comfyui - Uploaded {filename} to R2: {s3_url}")
                 output_list.append(
                     {
                         "filename": filename,
@@ -490,16 +559,9 @@ def _process_output_file(filename, subfolder, file_type, job_id, output_list, er
                     }
                 )
             except Exception as e:
-                error_msg = f"Error uploading {filename} to S3: {e}"
+                error_msg = f"Error uploading {filename} to R2: {e}"
                 print(f"worker-comfyui - {error_msg}")
                 errors.append(error_msg)
-                if "temp_file_path" in locals() and os.path.exists(temp_file_path):
-                    try:
-                        os.remove(temp_file_path)
-                    except OSError as rm_err:
-                        print(
-                            f"worker-comfyui - Error removing temp file {temp_file_path}: {rm_err}"
-                        )
         else:
             try:
                 base64_data = base64.b64encode(file_bytes).decode("utf-8")
@@ -535,6 +597,7 @@ def handler(job):
 
     workflow = validated_data["workflow"]
     input_images = validated_data.get("images")
+    uid = validated_data.get("uid")
 
     if not check_server(
         f"http://{COMFY_HOST}/",
@@ -685,6 +748,7 @@ def handler(job):
                         job_id=job_id,
                         output_list=output_images,
                         errors=errors,
+                        uid=uid,
                     )
 
             if "audio" in node_output:
@@ -699,6 +763,7 @@ def handler(job):
                         job_id=job_id,
                         output_list=output_audio,
                         errors=errors,
+                        uid=uid,
                     )
 
             handled_keys = {"images", "audio"}

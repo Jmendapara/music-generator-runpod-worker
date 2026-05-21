@@ -1,5 +1,6 @@
 {
   "input": {
+    "uid": "test-user-id",
     "workflow": {
       "1": {
         "inputs": {
