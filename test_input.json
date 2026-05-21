@@ -4,7 +4,7 @@
     "workflow": {
       "1": {
         "inputs": {
-          "unet_name": "acestep_v1.5_turbo.safetensors",
+          "unet_name": "acestep_v1.5_xl_base_bf16.safetensors",
           "weight_dtype": "default"
         },
         "class_type": "UNETLoader",
@@ -15,7 +15,7 @@
       "2": {
         "inputs": {
           "clip_name1": "qwen_0.6b_ace15.safetensors",
-          "clip_name2": "qwen_1.7b_ace15.safetensors",
+          "clip_name2": "qwen_4b_ace15.safetensors",
           "type": "ace",
           "device": "default"
         },
@@ -97,8 +97,8 @@
       "8": {
         "inputs": {
           "seed": 0,
-          "steps": 8,
-          "cfg": 1,
+          "steps": 50,
+          "cfg": 6,
           "sampler_name": "euler",
           "scheduler": "simple",
           "denoise": 1,
