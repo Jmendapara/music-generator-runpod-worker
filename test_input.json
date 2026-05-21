@@ -73,7 +73,7 @@
           "generate_audio_codes": true,
           "cfg_scale": 2.0,
           "temperature": 0.85,
-          "top_p": 0.9,
+          "top_p": 1.0,
           "top_k": 0,
           "min_p": 0.0
         },
